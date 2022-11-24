@@ -19,10 +19,6 @@ ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 
-// {4841AE59-5EE7-4D30-93DB-CAF2B872257B}
-static const GUID GUID_ICON =
-{ 0x4841ae59, 0x5ee7, 0x4d30, { 0x93, 0xdb, 0xca, 0xf2, 0xb8, 0x72, 0x25, 0x7b } };
-
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     _In_opt_ HINSTANCE hPrevInstance,
@@ -118,11 +114,11 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     NOTIFYICONDATAW notifyData = { 0 };
     notifyData.cbSize = sizeof(notifyData);
     notifyData.hWnd = hWnd;
-    notifyData.uFlags = NIF_MESSAGE | NIF_TIP | NIF_ICON | NIF_GUID;
+    notifyData.uID = 1;
+    notifyData.uFlags = NIF_MESSAGE | NIF_TIP | NIF_ICON;
     notifyData.uCallbackMessage = WM_USER;
     notifyData.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_FUCKSHIFTSPACE));
     wcscpy_s(notifyData.szTip, szTitle);
-    notifyData.guidItem = GUID_ICON;
     Shell_NotifyIconW(NIM_ADD, &notifyData);
 
     // 创建 Shift + 空格 热键
