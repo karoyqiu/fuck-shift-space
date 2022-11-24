@@ -6,6 +6,7 @@
 #include "fuck-shift-space.h"
 
 #define MAX_LOADSTRING 100
+#define HOTKEY_ID 0x33C8
 
 // 全局变量:
 HINSTANCE hInst;                                // 当前实例
@@ -123,6 +124,12 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     notifyData.guidItem = GUID_ICON;
     Shell_NotifyIconW(NIM_ADD, &notifyData);
 
+    // 创建 Shift + 空格 热键
+    if (RegisterHotKey(hWnd, HOTKEY_ID, MOD_SHIFT | MOD_NOREPEAT, 0x20))
+    {
+        OutputDebugStringW(L"Successfully registered Shift + Space global hotkey.");
+    }
+
     return TRUE;
 }
 
@@ -165,6 +172,33 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             PostQuitMessage(0);
         }
         break;
+
+    case WM_HOTKEY:
+    {
+        INPUT inputs[5];
+        ZeroMemory(inputs, sizeof(inputs));
+
+        inputs[0].type = INPUT_KEYBOARD;
+        inputs[0].ki.wVk = VK_SHIFT;
+        inputs[0].ki.dwFlags = KEYEVENTF_KEYUP;
+
+        inputs[1].type = INPUT_KEYBOARD;
+        inputs[1].ki.wVk = VK_SPACE;
+        inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+
+        inputs[2].type = INPUT_KEYBOARD;
+        inputs[2].ki.wVk = VK_SPACE;
+
+        inputs[3].type = INPUT_KEYBOARD;
+        inputs[3].ki.wVk = VK_SPACE;
+        inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+
+        inputs[4].type = INPUT_KEYBOARD;
+        inputs[4].ki.wVk = VK_SHIFT;
+
+        SendInput(_countof(inputs), inputs, sizeof(INPUT));
+    }
+    break;
 
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
