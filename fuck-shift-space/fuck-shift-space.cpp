@@ -6,7 +6,8 @@
 #include "fuck-shift-space.h"
 
 #define MAX_LOADSTRING 100
-#define HOTKEY_ID 0x33C8
+#define HOTKEY_SHIFT_SPACE 0x33C4
+#define HOTKEY_WIN_SPACE 0x33C5
 
 // 全局变量:
 HINSTANCE hInst;                                // 当前实例
@@ -125,9 +126,14 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     Shell_NotifyIconW(NIM_ADD, &notifyData);
 
     // 创建 Shift + 空格 热键
-    if (RegisterHotKey(hWnd, HOTKEY_ID, MOD_SHIFT | MOD_NOREPEAT, 0x20))
+    if (RegisterHotKey(hWnd, HOTKEY_SHIFT_SPACE, MOD_SHIFT | MOD_NOREPEAT, 0x20))
     {
-        OutputDebugStringW(L"Successfully registered Shift + Space global hotkey.");
+        OutputDebugStringW(L"Successfully registered Shift + Space global hotkey.\n");
+    }
+
+    if (RegisterHotKey(hWnd, HOTKEY_WIN_SPACE, MOD_WIN | MOD_NOREPEAT, 0x20))
+    {
+        OutputDebugStringW(L"Successfully registered Win + Space global hotkey.\n");
     }
 
     return TRUE;
@@ -159,8 +165,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         default:
             return DefWindowProc(hWnd, message, wParam, lParam);
         }
+
+        break;
     }
-    break;
 
     case WM_DESTROY:
         PostQuitMessage(0);
@@ -174,31 +181,83 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_HOTKEY:
-    {
-        INPUT inputs[5];
-        ZeroMemory(inputs, sizeof(inputs));
+        switch (wParam)
+        {
+        case HOTKEY_SHIFT_SPACE:
+        {
+            // Shift + Space => Space + Shift
+            INPUT inputs[5];
+            ZeroMemory(inputs, sizeof(inputs));
 
-        inputs[0].type = INPUT_KEYBOARD;
-        inputs[0].ki.wVk = VK_SHIFT;
-        inputs[0].ki.dwFlags = KEYEVENTF_KEYUP;
+            // shift up
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].ki.wVk = VK_SHIFT;
+            inputs[0].ki.dwFlags = KEYEVENTF_KEYUP;
 
-        inputs[1].type = INPUT_KEYBOARD;
-        inputs[1].ki.wVk = VK_SPACE;
-        inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+            // space up
+            inputs[1].type = INPUT_KEYBOARD;
+            inputs[1].ki.wVk = VK_SPACE;
+            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
 
-        inputs[2].type = INPUT_KEYBOARD;
-        inputs[2].ki.wVk = VK_SPACE;
+            // space down
+            inputs[2].type = INPUT_KEYBOARD;
+            inputs[2].ki.wVk = VK_SPACE;
 
-        inputs[3].type = INPUT_KEYBOARD;
-        inputs[3].ki.wVk = VK_SPACE;
-        inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+            // space up
+            inputs[3].type = INPUT_KEYBOARD;
+            inputs[3].ki.wVk = VK_SPACE;
+            inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
 
-        inputs[4].type = INPUT_KEYBOARD;
-        inputs[4].ki.wVk = VK_SHIFT;
+            // shift down
+            inputs[4].type = INPUT_KEYBOARD;
+            inputs[4].ki.wVk = VK_SHIFT;
 
-        SendInput(_countof(inputs), inputs, sizeof(INPUT));
-    }
-    break;
+            SendInput(_countof(inputs), inputs, sizeof(INPUT));
+            break;
+        }
+
+        case HOTKEY_WIN_SPACE:
+        {
+            // Win + Space => Ctrl + Space
+            INPUT inputs[6];
+            ZeroMemory(inputs, sizeof(inputs));
+
+            // win up
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].ki.wVk = VK_LWIN;
+            inputs[0].ki.dwFlags = KEYEVENTF_KEYUP;
+
+            // space up
+            inputs[1].type = INPUT_KEYBOARD;
+            inputs[1].ki.wVk = VK_SPACE;
+            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+
+            // ctrl down
+            inputs[2].type = INPUT_KEYBOARD;
+            inputs[2].ki.wVk = VK_LCONTROL;
+
+            // space down
+            inputs[3].type = INPUT_KEYBOARD;
+            inputs[3].ki.wVk = VK_SPACE;
+
+            // space up
+            inputs[4].type = INPUT_KEYBOARD;
+            inputs[4].ki.wVk = VK_SPACE;
+            inputs[4].ki.dwFlags = KEYEVENTF_KEYUP;
+
+            // ctrl up
+            inputs[5].type = INPUT_KEYBOARD;
+            inputs[5].ki.wVk = VK_LCONTROL;
+            inputs[5].ki.dwFlags = KEYEVENTF_KEYUP;
+
+            SendInput(_countof(inputs), inputs, sizeof(INPUT));
+            break;
+        }
+
+        default:
+            break;
+        }
+        break;
 
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
