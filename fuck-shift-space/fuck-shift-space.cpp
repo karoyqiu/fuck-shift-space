@@ -5,9 +5,10 @@
 #include "framework.h"
 #include "fuck-shift-space.h"
 
-#define MAX_LOADSTRING 100
-#define HOTKEY_SHIFT_SPACE 0x33C4
-#define HOTKEY_WIN_SPACE 0x33C5
+#define MAX_LOADSTRING      100
+#define HOTKEY_SHIFT_SPACE  0x33C4
+#define HOTKEY_WIN_SPACE    0x33C5
+#define TIMER_MEMORY        1024
 
 // 全局变量:
 HINSTANCE hInst;                                // 当前实例
@@ -15,15 +16,15 @@ WCHAR szTitle[MAX_LOADSTRING];                  // 标题栏文本
 WCHAR szWindowClass[MAX_LOADSTRING];            // 主窗口类名
 
 // 此代码模块中包含的函数的前向声明:
-ATOM                MyRegisterClass(HINSTANCE hInstance);
-BOOL                InitInstance(HINSTANCE, int);
-LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
+static ATOM                MyRegisterClass(HINSTANCE hInstance);
+static BOOL                InitInstance(HINSTANCE, int);
+static LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
-    _In_opt_ HINSTANCE hPrevInstance,
-    _In_ LPWSTR    lpCmdLine,
-    _In_ int       nCmdShow)
+                      _In_opt_ HINSTANCE hPrevInstance,
+                      _In_ LPWSTR    lpCmdLine,
+                      _In_ int       nCmdShow)
 {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
@@ -66,7 +67,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 //
 //  目标: 注册窗口类。
 //
-ATOM MyRegisterClass(HINSTANCE hInstance)
+static ATOM MyRegisterClass(HINSTANCE hInstance)
 {
     WNDCLASSEXW wcex;
 
@@ -97,14 +98,14 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 //        在此函数中，我们在全局变量中保存实例句柄并
 //        创建和显示主程序窗口。
 //
-BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
+static BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
     UNREFERENCED_PARAMETER(nCmdShow);
 
     hInst = hInstance; // 将实例句柄存储在全局变量中
 
     HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, HWND_MESSAGE, nullptr, hInstance, nullptr);
+                              CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, HWND_MESSAGE, nullptr, hInstance, nullptr);
 
     if (!hWnd)
     {
@@ -133,7 +134,164 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
         OutputDebugStringW(L"Successfully registered Win + Space global hotkey.\n");
     }
 
+    // 创建监控内存使用的计时器
+    if (SetTimer(hWnd, TIMER_MEMORY, 3000, nullptr) == 0)
+    {
+        OutputDebugStringW(L"Failed to create memory watching timer.\n");
+    }
+
     return TRUE;
+}
+
+
+static void Cls_OnCommand(HWND hwnd, int id, HWND hwndCtl, UINT codeNotify)
+{
+    // 分析菜单选择:
+    switch (id)
+    {
+    case IDM_EXIT:
+        DestroyWindow(hwnd);
+        break;
+    default:
+        FORWARD_WM_COMMAND(hwnd, id, hwndCtl, codeNotify, DefWindowProc);
+        break;
+    }
+}
+
+
+static void Cls_OnHotKey(HWND hwnd, int idHotKey, UINT fuModifiers, UINT vk)
+{
+    UNREFERENCED_PARAMETER(hwnd);
+    UNREFERENCED_PARAMETER(fuModifiers);
+    UNREFERENCED_PARAMETER(vk);
+
+    switch (idHotKey)
+    {
+    case HOTKEY_SHIFT_SPACE:
+    {
+        // Shift + Space => Space + Shift
+        INPUT inputs[5];
+        ZeroMemory(inputs, sizeof(inputs));
+
+        // shift up
+        inputs[0].type = INPUT_KEYBOARD;
+        inputs[0].ki.wVk = VK_SHIFT;
+        inputs[0].ki.dwFlags = KEYEVENTF_KEYUP;
+
+        // space up
+        inputs[1].type = INPUT_KEYBOARD;
+        inputs[1].ki.wVk = VK_SPACE;
+        inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+
+        // space down
+        inputs[2].type = INPUT_KEYBOARD;
+        inputs[2].ki.wVk = VK_SPACE;
+
+        // space up
+        inputs[3].type = INPUT_KEYBOARD;
+        inputs[3].ki.wVk = VK_SPACE;
+        inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+
+        // shift down
+        inputs[4].type = INPUT_KEYBOARD;
+        inputs[4].ki.wVk = VK_SHIFT;
+
+        SendInput(_countof(inputs), inputs, sizeof(INPUT));
+        break;
+    }
+
+    case HOTKEY_WIN_SPACE:
+    {
+        // Win + Space => Ctrl + Space
+        INPUT inputs[6];
+        ZeroMemory(inputs, sizeof(inputs));
+
+        // win up
+        inputs[0].type = INPUT_KEYBOARD;
+        inputs[0].ki.wVk = VK_LWIN;
+        inputs[0].ki.dwFlags = KEYEVENTF_KEYUP;
+
+        // space up
+        inputs[1].type = INPUT_KEYBOARD;
+        inputs[1].ki.wVk = VK_SPACE;
+        inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+
+        // ctrl down
+        inputs[2].type = INPUT_KEYBOARD;
+        inputs[2].ki.wVk = VK_LCONTROL;
+
+        // space down
+        inputs[3].type = INPUT_KEYBOARD;
+        inputs[3].ki.wVk = VK_SPACE;
+
+        // space up
+        inputs[4].type = INPUT_KEYBOARD;
+        inputs[4].ki.wVk = VK_SPACE;
+        inputs[4].ki.dwFlags = KEYEVENTF_KEYUP;
+
+        // ctrl up
+        inputs[5].type = INPUT_KEYBOARD;
+        inputs[5].ki.wVk = VK_LCONTROL;
+        inputs[5].ki.dwFlags = KEYEVENTF_KEYUP;
+
+        SendInput(_countof(inputs), inputs, sizeof(INPUT));
+        break;
+    }
+
+    default:
+        break;
+    }
+}
+
+
+static void Cls_OnTimer(HWND hwnd, UINT id)
+{
+    UNREFERENCED_PARAMETER(hwnd);
+
+    if (id != TIMER_MEMORY)
+    {
+        return;
+    }
+
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+
+    if (hSnap == INVALID_HANDLE_VALUE)
+    {
+        return;
+    }
+
+    PROCESSENTRY32W pe32 = { 0 };
+    pe32.dwSize = sizeof(pe32);
+
+    if (!Process32FirstW(hSnap, &pe32))
+    {
+        return;
+    }
+
+    do
+    {
+        if (wcsstr(pe32.szExeFile, L"msedge.exe") == nullptr)
+        {
+            continue;
+        }
+
+        HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE, FALSE, pe32.th32ProcessID);
+
+        if (hProcess)
+        {
+            static const SIZE_T MAX_MEMORY = 1024 * 1024 * 1024;
+            PROCESS_MEMORY_COUNTERS mem = { 0 };
+
+            if (GetProcessMemoryInfo(hProcess, &mem, sizeof(mem)) && mem.PagefileUsage >= MAX_MEMORY)
+            {
+                TerminateProcess(hProcess, 0);
+            }
+
+            CloseHandle(hProcess);
+        }
+    } while (Process32NextW(hSnap, &pe32));
+
+    CloseHandle(hSnap);
 }
 
 //
@@ -146,25 +304,13 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 //  WM_DESTROY  - 发送退出消息并返回
 //
 //
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
-    case WM_COMMAND:
-    {
-        int wmId = LOWORD(wParam);
-        // 分析菜单选择:
-        switch (wmId)
-        {
-        case IDM_EXIT:
-            DestroyWindow(hWnd);
-            break;
-        default:
-            return DefWindowProc(hWnd, message, wParam, lParam);
-        }
-
-        break;
-    }
+        HANDLE_MSG(hWnd, WM_COMMAND, Cls_OnCommand);
+        HANDLE_MSG(hWnd, WM_HOTKEY, Cls_OnHotKey);
+        HANDLE_MSG(hWnd, WM_TIMER, Cls_OnTimer);
 
     case WM_DESTROY:
         PostQuitMessage(0);
@@ -174,85 +320,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         if (lParam == WM_RBUTTONUP)
         {
             PostQuitMessage(0);
-        }
-        break;
-
-    case WM_HOTKEY:
-        switch (wParam)
-        {
-        case HOTKEY_SHIFT_SPACE:
-        {
-            // Shift + Space => Space + Shift
-            INPUT inputs[5];
-            ZeroMemory(inputs, sizeof(inputs));
-
-            // shift up
-            inputs[0].type = INPUT_KEYBOARD;
-            inputs[0].ki.wVk = VK_SHIFT;
-            inputs[0].ki.dwFlags = KEYEVENTF_KEYUP;
-
-            // space up
-            inputs[1].type = INPUT_KEYBOARD;
-            inputs[1].ki.wVk = VK_SPACE;
-            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-
-            // space down
-            inputs[2].type = INPUT_KEYBOARD;
-            inputs[2].ki.wVk = VK_SPACE;
-
-            // space up
-            inputs[3].type = INPUT_KEYBOARD;
-            inputs[3].ki.wVk = VK_SPACE;
-            inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
-
-            // shift down
-            inputs[4].type = INPUT_KEYBOARD;
-            inputs[4].ki.wVk = VK_SHIFT;
-
-            SendInput(_countof(inputs), inputs, sizeof(INPUT));
-            break;
-        }
-
-        case HOTKEY_WIN_SPACE:
-        {
-            // Win + Space => Ctrl + Space
-            INPUT inputs[6];
-            ZeroMemory(inputs, sizeof(inputs));
-
-            // win up
-            inputs[0].type = INPUT_KEYBOARD;
-            inputs[0].ki.wVk = VK_LWIN;
-            inputs[0].ki.dwFlags = KEYEVENTF_KEYUP;
-
-            // space up
-            inputs[1].type = INPUT_KEYBOARD;
-            inputs[1].ki.wVk = VK_SPACE;
-            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-
-            // ctrl down
-            inputs[2].type = INPUT_KEYBOARD;
-            inputs[2].ki.wVk = VK_LCONTROL;
-
-            // space down
-            inputs[3].type = INPUT_KEYBOARD;
-            inputs[3].ki.wVk = VK_SPACE;
-
-            // space up
-            inputs[4].type = INPUT_KEYBOARD;
-            inputs[4].ki.wVk = VK_SPACE;
-            inputs[4].ki.dwFlags = KEYEVENTF_KEYUP;
-
-            // ctrl up
-            inputs[5].type = INPUT_KEYBOARD;
-            inputs[5].ki.wVk = VK_LCONTROL;
-            inputs[5].ki.dwFlags = KEYEVENTF_KEYUP;
-
-            SendInput(_countof(inputs), inputs, sizeof(INPUT));
-            break;
-        }
-
-        default:
-            break;
         }
         break;
 
