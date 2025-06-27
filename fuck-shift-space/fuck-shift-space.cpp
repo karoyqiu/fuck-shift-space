@@ -244,6 +244,27 @@ static void Cls_OnHotKey(HWND hwnd, int idHotKey, UINT fuModifiers, UINT vk)
 }
 
 
+static BOOL IsProcessExited(DWORD dwProcessID)
+{
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, dwProcessID);
+
+    if (hProcess)
+    {
+        DWORD dwExitCode = 0;
+
+        if (GetExitCodeProcess(hProcess, &dwExitCode) && dwExitCode == STILL_ACTIVE)
+        {
+            CloseHandle(hProcess);
+            return FALSE;
+        }
+
+        CloseHandle(hProcess);
+    }
+
+    return TRUE;
+}
+
+
 static void Cls_OnTimer(HWND hwnd, UINT id)
 {
     UNREFERENCED_PARAMETER(hwnd);
@@ -270,24 +291,35 @@ static void Cls_OnTimer(HWND hwnd, UINT id)
 
     do
     {
-        if (wcsstr(pe32.szExeFile, L"msedge.exe") == nullptr)
+        if (wcsstr(pe32.szExeFile, L"msedge.exe") != nullptr)
         {
-            continue;
-        }
+            HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE, FALSE, pe32.th32ProcessID);
 
-        HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE, FALSE, pe32.th32ProcessID);
-
-        if (hProcess)
-        {
-            static const SIZE_T MAX_MEMORY = 1024 * 1024 * 1024;
-            PROCESS_MEMORY_COUNTERS mem = { 0 };
-
-            if (GetProcessMemoryInfo(hProcess, &mem, sizeof(mem)) && mem.PagefileUsage >= MAX_MEMORY)
+            if (hProcess)
             {
-                TerminateProcess(hProcess, 0);
-            }
+                static const SIZE_T MAX_MEMORY = 1024 * 1024 * 1024;
+                PROCESS_MEMORY_COUNTERS mem = { 0 };
 
-            CloseHandle(hProcess);
+                if (GetProcessMemoryInfo(hProcess, &mem, sizeof(mem)) && mem.PagefileUsage >= MAX_MEMORY)
+                {
+                    TerminateProcess(hProcess, 0);
+                }
+
+                CloseHandle(hProcess);
+            }
+        }
+        else if (wcsstr(pe32.szExeFile, L"yundetectservice.exe") != nullptr)
+        {
+            if (IsProcessExited(pe32.th32ParentProcessID))
+            {
+                HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pe32.th32ProcessID);
+
+                if (hProcess)
+                {
+                    TerminateProcess(hProcess, 0);
+                    CloseHandle(hProcess);
+                }
+            }
         }
     } while (Process32NextW(hSnap, &pe32));
 
