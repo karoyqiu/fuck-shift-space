@@ -5,6 +5,9 @@
 #include "framework.h"
 #include "fuck-shift-space.h"
 
+#include <unordered_map>
+#include <unordered_set>
+
 #define MAX_LOADSTRING      100
 #define HOTKEY_SHIFT_SPACE  0x33C4
 #define HOTKEY_WIN_SPACE    0x33C5
@@ -289,6 +292,10 @@ static void Cls_OnTimer(HWND hwnd, UINT id)
         return;
     }
 
+    const auto now = GetTickCount64();
+    static std::unordered_map<DWORD, ULONGLONG> firstSeen;
+    std::unordered_set<DWORD> currentSeen;
+
     do
     {
         if (wcsstr(pe32.szExeFile, L"msedge.exe") != nullptr)
@@ -297,12 +304,27 @@ static void Cls_OnTimer(HWND hwnd, UINT id)
 
             if (hProcess)
             {
+                currentSeen.insert(pe32.th32ProcessID);
+                auto iter = firstSeen.find(pe32.th32ProcessID);
+
                 static const SIZE_T MAX_MEMORY = 1024 * 1024 * 1024;
                 PROCESS_MEMORY_COUNTERS mem = { 0 };
 
                 if (GetProcessMemoryInfo(hProcess, &mem, sizeof(mem)) && mem.PagefileUsage >= MAX_MEMORY)
                 {
-                    TerminateProcess(hProcess, 0);
+                    if (iter == firstSeen.end())
+                    {
+                        firstSeen.emplace(pe32.th32ProcessID, now);
+                    }
+                    else if (now - iter->second >= 10000)
+                    {
+                        TerminateProcess(hProcess, 0);
+                        firstSeen.erase(iter);
+                    }
+                }
+                else if (iter != firstSeen.end())
+                {
+                    firstSeen.erase(iter);
                 }
 
                 CloseHandle(hProcess);
@@ -324,6 +346,18 @@ static void Cls_OnTimer(HWND hwnd, UINT id)
     } while (Process32NextW(hSnap, &pe32));
 
     CloseHandle(hSnap);
+
+    for (auto iter = firstSeen.begin(); iter != firstSeen.end();)
+    {
+        if (currentSeen.count(iter->first) == 0)
+        {
+            iter = firstSeen.erase(iter);
+        }
+        else
+        {
+            ++iter;
+        }
+    }
 }
 
 //
