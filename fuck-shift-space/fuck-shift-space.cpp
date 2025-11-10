@@ -12,6 +12,7 @@
 #define HOTKEY_SHIFT_SPACE  0x33C4
 #define HOTKEY_WIN_SPACE    0x33C5
 #define TIMER_MEMORY        1024
+#define TIMER_MEMORY_INTERVAL   3000
 
 // 全局变量:
 HINSTANCE hInst;                                // 当前实例
@@ -138,7 +139,7 @@ static BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     }
 
     // 创建监控内存使用的计时器
-    if (SetTimer(hWnd, TIMER_MEMORY, 3000, nullptr) == 0)
+    if (SetTimer(hWnd, TIMER_MEMORY, TIMER_MEMORY_INTERVAL, nullptr) == 0)
     {
         OutputDebugStringW(L"Failed to create memory watching timer.\n");
     }
@@ -268,15 +269,50 @@ static BOOL IsProcessExited(DWORD dwProcessID)
 }
 
 
-static void Cls_OnTimer(HWND hwnd, UINT id)
+static SIZE_T GetMemoryLimit()
 {
-    UNREFERENCED_PARAMETER(hwnd);
+    static const SIZE_T MB = 1024 * 1024;
+    static const SIZE_T MAX_MEMORY = 2 * 1024 * MB;
 
-    if (id != TIMER_MEMORY)
+    HKEY hKey = nullptr;
+    SIZE_T nLimit = MAX_MEMORY;
+
+    __try
     {
-        return;
+        auto lResult = RegOpenKeyExW(HKEY_CURRENT_USER, LR"(Software\karoyqiu\fuck-shift-space)", 0, KEY_READ, &hKey);
+
+        if (lResult != ERROR_SUCCESS)
+        {
+            __leave;
+        }
+
+        DWORD dwData = 0;
+        DWORD cbData = sizeof(dwData);
+        lResult = RegQueryValueExW(hKey, L"MemoryLimitMB", nullptr, nullptr, (LPBYTE)&dwData, &cbData);
+
+        if (lResult != ERROR_SUCCESS)
+        {
+            nLimit = MAX_MEMORY;
+        }
+        else
+        {
+            nLimit = dwData * MB;
+        }
+    }
+    __finally
+    {
+        if (hKey)
+        {
+            RegCloseKey(hKey);
+        }
     }
 
+    return nLimit;
+}
+
+
+static void KillSomeApp()
+{
     HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 
     if (hSnap == INVALID_HANDLE_VALUE)
@@ -298,6 +334,8 @@ static void Cls_OnTimer(HWND hwnd, UINT id)
 
     do
     {
+        _wcslwr_s(pe32.szExeFile);
+
         if (wcsstr(pe32.szExeFile, L"msedge.exe") != nullptr)
         {
             HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE, FALSE, pe32.th32ProcessID);
@@ -307,10 +345,10 @@ static void Cls_OnTimer(HWND hwnd, UINT id)
                 currentSeen.insert(pe32.th32ProcessID);
                 auto iter = firstSeen.find(pe32.th32ProcessID);
 
-                static const SIZE_T MAX_MEMORY = 1024 * 1024 * 1024;
+                const auto nLimit = GetMemoryLimit();
                 PROCESS_MEMORY_COUNTERS mem = { 0 };
 
-                if (GetProcessMemoryInfo(hProcess, &mem, sizeof(mem)) && mem.PagefileUsage >= MAX_MEMORY)
+                if (GetProcessMemoryInfo(hProcess, &mem, sizeof(mem)) && mem.PagefileUsage >= nLimit)
                 {
                     if (iter == firstSeen.end())
                     {
@@ -359,6 +397,80 @@ static void Cls_OnTimer(HWND hwnd, UINT id)
         }
     }
 }
+
+
+static void RemoveDirectoryRecursively(LPCWSTR lpszDir)
+{
+    WCHAR wszFind[MAX_PATH] = { 0 };
+    wcscpy_s(wszFind, lpszDir);
+    wcscat_s(wszFind, L"\\*");
+
+    WIN32_FIND_DATAW data = { 0 };
+    auto hFind = FindFirstFileW(wszFind, &data);
+
+    if (hFind != INVALID_HANDLE_VALUE)
+    {
+        do
+        {
+            if (wcscmp(data.cFileName, L".") == 0 || wcscmp(data.cFileName, L"..") == 0)
+            {
+                continue;
+            }
+
+            WCHAR wszName[MAX_PATH] = { 0 };
+            wcscpy_s(wszName, lpszDir);
+            wcscat_s(wszName, L"\\");
+            wcscat_s(wszName, data.cFileName);
+
+            if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            {
+                RemoveDirectoryRecursively(wszName);
+            }
+            else
+            {
+                DeleteFileW(wszName);
+            }
+        } while (FindNextFileW(hFind, &data));
+
+        FindClose(hFind);
+    }
+}
+
+
+static void ClearTempDir()
+{
+    ULARGE_INTEGER ulFree = { 0 };
+    ULARGE_INTEGER ulTotal = { 0 };
+
+    if (!GetDiskFreeSpaceExW(L"R:\\", nullptr, &ulTotal, &ulFree))
+    {
+        return;
+    }
+
+    auto nMinimum = ulTotal.QuadPart / 10;
+
+    if (ulFree.QuadPart < nMinimum)
+    {
+        RemoveDirectoryRecursively(L"R:\\temp");
+    }
+}
+
+
+static void Cls_OnTimer(HWND hWnd, UINT id)
+{
+    if (id != TIMER_MEMORY)
+    {
+        return;
+    }
+
+    KillTimer(hWnd, TIMER_MEMORY);
+
+    KillSomeApp();
+    ClearTempDir();
+
+    SetTimer(hWnd, TIMER_MEMORY, TIMER_MEMORY_INTERVAL, nullptr);
+}
+
 
 //
 //  函数: WndProc(HWND, UINT, WPARAM, LPARAM)
