@@ -14,3 +14,8 @@
 #include <memory.h>
 #include <tchar.h>
 #include <shellapi.h>
+
+// C++
+#include <string>
+#include <unordered_map>
+#include <unordered_set>

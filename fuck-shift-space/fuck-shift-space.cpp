@@ -5,19 +5,22 @@
 #include "framework.h"
 #include "fuck-shift-space.h"
 
-#include <unordered_map>
-#include <unordered_set>
-
 #define MAX_LOADSTRING      100
 #define HOTKEY_SHIFT_SPACE  0x33C4
 #define HOTKEY_WIN_SPACE    0x33C5
 #define TIMER_MEMORY        1024
 #define TIMER_MEMORY_INTERVAL   3000
 
+#define IMC_GETCONVERSIONMODE   0x0001
+#define IMC_SETCONVERSIONMODE   0x0002
+
 // 全局变量:
-HINSTANCE hInst;                                // 当前实例
-WCHAR szTitle[MAX_LOADSTRING];                  // 标题栏文本
-WCHAR szWindowClass[MAX_LOADSTRING];            // 主窗口类名
+static HINSTANCE hInst;                                // 当前实例
+static WCHAR szTitle[MAX_LOADSTRING];                  // 标题栏文本
+static WCHAR szWindowClass[MAX_LOADSTRING];            // 主窗口类名
+static std::unordered_set<std::wstring> chineseApps;
+static std::unordered_set<std::wstring> englishApps;
+static HWINEVENTHOOK hEventHook = nullptr;
 
 // 此代码模块中包含的函数的前向声明:
 static ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -92,6 +95,92 @@ static ATOM MyRegisterClass(HINSTANCE hInstance)
     return RegisterClassExW(&wcex);
 }
 
+
+static void StringArrayToSet(LPCWSTR lpStringArray, std::unordered_set<std::wstring> *set)
+{
+    set->clear();
+    LPCWSTR p = lpStringArray;
+
+    while (*p != L'\0')
+    {
+        set->emplace(p);
+        p += wcslen(p) + 1;
+    }
+}
+
+
+static void LoadEnglishApps()
+{
+    WCHAR wszBuffer[1024] = { 0 };
+    DWORD cbData = sizeof(wszBuffer);
+    auto lResult = RegGetValueW(HKEY_CURRENT_USER, LR"(Software\karoyqiu\fuck-shift-space)", L"ChineseApps", RRF_RT_REG_MULTI_SZ, nullptr, &wszBuffer, &cbData);
+
+    if (lResult == ERROR_SUCCESS)
+    {
+        StringArrayToSet(wszBuffer, &chineseApps);
+    }
+
+    cbData = sizeof(wszBuffer);
+    lResult = RegGetValueW(HKEY_CURRENT_USER, LR"(Software\karoyqiu\fuck-shift-space)", L"EnglishApps", RRF_RT_REG_MULTI_SZ, nullptr, &wszBuffer, &cbData);
+
+    if (lResult == ERROR_SUCCESS)
+    {
+        StringArrayToSet(wszBuffer, &englishApps);
+    }
+}
+
+static void SwitchToEnglish(HWND hwnd, BOOL bEnglish)
+{
+    auto hIME = ImmGetDefaultIMEWnd(hwnd);
+    Sleep(40);
+    SendMessageW(hIME, WM_IME_CONTROL, IMC_SETCONVERSIONMODE, bEnglish ? 0 : 1025);
+}
+
+
+static void WinEventProc(HWINEVENTHOOK hWinEventHook,
+                         DWORD event,
+                         HWND hwnd,
+                         LONG idObject,
+                         LONG idChild,
+                         DWORD idEventThread,
+                         DWORD dwmsEventTime)
+{
+    UNREFERENCED_PARAMETER(hWinEventHook);
+    UNREFERENCED_PARAMETER(event);
+    UNREFERENCED_PARAMETER(idObject);
+    UNREFERENCED_PARAMETER(idChild);
+    UNREFERENCED_PARAMETER(idEventThread);
+    UNREFERENCED_PARAMETER(dwmsEventTime);
+
+    DWORD dwProcessID = 0;
+    GetWindowThreadProcessId(hwnd, &dwProcessID);
+
+    auto hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, dwProcessID);
+
+    if (hProcess == nullptr)
+    {
+        return;
+    }
+
+    WCHAR wszFilename[MAX_PATH] = { 0 };
+    GetProcessImageFileNameW(hProcess, wszFilename, _countof(wszFilename));
+    CloseHandle(hProcess);
+
+    _wcslwr_s(wszFilename);
+    const auto *p = wcsrchr(wszFilename, L'\\') + 1;
+    std::wstring s(p);
+
+    if (englishApps.find(p) != englishApps.end())
+    {
+        SwitchToEnglish(hwnd, TRUE);
+    }
+    else if (chineseApps.find(p) != chineseApps.end())
+    {
+        SwitchToEnglish(hwnd, FALSE);
+    }
+}
+
+
 //
 //   函数: InitInstance(HINSTANCE, int)
 //
@@ -143,6 +232,10 @@ static BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     {
         OutputDebugStringW(L"Failed to create memory watching timer.\n");
     }
+
+    LoadEnglishApps();
+    hEventHook = SetWinEventHook(EVENT_OBJECT_FOCUS, EVENT_OBJECT_FOCUS, nullptr, WinEventProc, 0, 0,
+                                 WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
 
     return TRUE;
 }
@@ -491,6 +584,12 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
         HANDLE_MSG(hWnd, WM_TIMER, Cls_OnTimer);
 
     case WM_DESTROY:
+        if (hEventHook)
+        {
+            UnhookWinEvent(hEventHook);
+            hEventHook = nullptr;
+        }
+
         PostQuitMessage(0);
         break;
 
