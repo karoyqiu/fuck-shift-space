@@ -170,11 +170,11 @@ static void WinEventProc(HWINEVENTHOOK hWinEventHook,
     const auto *p = wcsrchr(wszFilename, L'\\') + 1;
     std::wstring s(p);
 
-    if (englishApps.find(p) != englishApps.end())
+    if (englishApps.find(s) != englishApps.end())
     {
         SwitchToEnglish(hwnd, TRUE);
     }
-    else if (chineseApps.find(p) != chineseApps.end())
+    else if (chineseApps.find(s) != chineseApps.end())
     {
         SwitchToEnglish(hwnd, FALSE);
     }
@@ -423,11 +423,14 @@ static void KillSomeApp()
 
     const auto now = GetTickCount64();
     static std::unordered_map<DWORD, ULONGLONG> firstSeen;
-    std::unordered_set<DWORD> currentSeen;
+    std::unordered_map<DWORD, DWORD> parentMap;
+    std::unordered_map<DWORD, std::wstring> exeMap;
 
     do
     {
         _wcslwr_s(pe32.szExeFile);
+        parentMap.emplace(pe32.th32ProcessID, pe32.th32ParentProcessID);
+        exeMap.emplace(pe32.th32ProcessID, pe32.szExeFile);
 
         if (wcsstr(pe32.szExeFile, L"msedge.exe") != nullptr)
         {
@@ -435,7 +438,6 @@ static void KillSomeApp()
 
             if (hProcess)
             {
-                currentSeen.insert(pe32.th32ProcessID);
                 auto iter = firstSeen.find(pe32.th32ProcessID);
 
                 const auto nLimit = GetMemoryLimit();
@@ -474,13 +476,52 @@ static void KillSomeApp()
                 }
             }
         }
+        else if (wcsstr(pe32.szExeFile, L"oxc_language_server.exe") != nullptr)
+        {
+            BOOL bFound = FALSE;
+            DWORD dwParentID = pe32.th32ParentProcessID;
+
+            while (dwParentID != 0 && !bFound)
+            {
+                auto parentIter = parentMap.find(dwParentID);
+
+                if (parentIter == parentMap.end())
+                {
+                    break;
+                }
+
+                auto exeIter = exeMap.find(dwParentID);
+
+                if (exeIter != exeMap.end())
+                {
+                    if (exeIter->second == L"zed.exe" || exeIter->second == L"code.exe")
+                    {
+                        bFound = TRUE;
+                        break;
+                    }
+                }
+
+                dwParentID = parentIter->second;
+            }
+
+            if (!bFound)
+            {
+                HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pe32.th32ProcessID);
+
+                if (hProcess)
+                {
+                    TerminateProcess(hProcess, 0);
+                    CloseHandle(hProcess);
+                }
+            }
+        }
     } while (Process32NextW(hSnap, &pe32));
 
     CloseHandle(hSnap);
 
     for (auto iter = firstSeen.begin(); iter != firstSeen.end();)
     {
-        if (currentSeen.count(iter->first) == 0)
+        if (parentMap.count(iter->first) == 0)
         {
             iter = firstSeen.erase(iter);
         }
