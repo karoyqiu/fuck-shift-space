@@ -364,43 +364,19 @@ static BOOL IsProcessExited(DWORD dwProcessID)
 
 static SIZE_T GetMemoryLimit()
 {
-    static const SIZE_T MB = 1024 * 1024;
-    static const SIZE_T MAX_MEMORY = 2 * 1024 * MB;
-
     HKEY hKey = nullptr;
-    SIZE_T nLimit = MAX_MEMORY;
+    DWORD nLimit = 2 << 10;
 
-    __try
+    auto lResult = RegOpenKeyExW(HKEY_CURRENT_USER, LR"(Software\karoyqiu\fuck-shift-space)", 0, KEY_READ, &hKey);
+
+    if (lResult == ERROR_SUCCESS)
     {
-        auto lResult = RegOpenKeyExW(HKEY_CURRENT_USER, LR"(Software\karoyqiu\fuck-shift-space)", 0, KEY_READ, &hKey);
-
-        if (lResult != ERROR_SUCCESS)
-        {
-            __leave;
-        }
-
-        DWORD dwData = 0;
-        DWORD cbData = sizeof(dwData);
-        lResult = RegQueryValueExW(hKey, L"MemoryLimitMB", nullptr, nullptr, (LPBYTE)&dwData, &cbData);
-
-        if (lResult != ERROR_SUCCESS)
-        {
-            nLimit = MAX_MEMORY;
-        }
-        else
-        {
-            nLimit = dwData * MB;
-        }
-    }
-    __finally
-    {
-        if (hKey)
-        {
-            RegCloseKey(hKey);
-        }
+        DWORD cbData = sizeof(nLimit);
+        RegQueryValueExW(hKey, L"MemoryLimitMB", nullptr, nullptr, (LPBYTE)&nLimit, &cbData);
+        RegCloseKey(hKey);
     }
 
-    return nLimit;
+    return static_cast<SIZE_T>(nLimit) << 20;
 }
 
 
@@ -440,7 +416,7 @@ static void KillSomeApp()
             {
                 auto iter = firstSeen.find(pe32.th32ProcessID);
 
-                const auto nLimit = GetMemoryLimit();
+                static const auto nLimit = GetMemoryLimit();
                 PROCESS_MEMORY_COUNTERS mem = { 0 };
 
                 if (GetProcessMemoryInfo(hProcess, &mem, sizeof(mem)) && mem.PagefileUsage >= nLimit)
@@ -568,6 +544,8 @@ static void RemoveDirectoryRecursively(LPCWSTR lpszDir)
 
         FindClose(hFind);
     }
+
+    RemoveDirectoryW(lpszDir);
 }
 
 
@@ -575,8 +553,10 @@ static void ClearTempDir()
 {
     ULARGE_INTEGER ulFree = { 0 };
     ULARGE_INTEGER ulTotal = { 0 };
+    WCHAR wszTempPath[MAX_PATH] = { 0 };
+    GetTempPath2W(_countof(wszTempPath), wszTempPath);
 
-    if (!GetDiskFreeSpaceExW(L"R:\\", nullptr, &ulTotal, &ulFree))
+    if (!GetDiskFreeSpaceExW(wszTempPath, nullptr, &ulTotal, &ulFree))
     {
         return;
     }
@@ -585,7 +565,8 @@ static void ClearTempDir()
 
     if (ulFree.QuadPart < nMinimum)
     {
-        RemoveDirectoryRecursively(L"R:\\temp");
+        RemoveDirectoryRecursively(wszTempPath);
+        CreateDirectoryW(wszTempPath, nullptr);
     }
 }
 
