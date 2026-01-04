@@ -561,7 +561,7 @@ static void ClearTempDir()
         return;
     }
 
-    auto nMinimum = ulTotal.QuadPart / 10;
+    auto nMinimum = std::min(ulTotal.QuadPart >> 4, UINT64_C(1024 * 1024 * 1024));
 
     if (ulFree.QuadPart < nMinimum)
     {
