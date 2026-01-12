@@ -29,9 +29,9 @@ static LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
-                      _In_opt_ HINSTANCE hPrevInstance,
-                      _In_ LPWSTR    lpCmdLine,
-                      _In_ int       nCmdShow)
+    _In_opt_ HINSTANCE hPrevInstance,
+    _In_ LPWSTR    lpCmdLine,
+    _In_ int       nCmdShow)
 {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
@@ -96,7 +96,7 @@ static ATOM MyRegisterClass(HINSTANCE hInstance)
 }
 
 
-static void StringArrayToSet(LPCWSTR lpStringArray, std::unordered_set<std::wstring> *set)
+static void StringArrayToSet(LPCWSTR lpStringArray, std::unordered_set<std::wstring>* set)
 {
     set->clear();
     LPCWSTR p = lpStringArray;
@@ -138,12 +138,12 @@ static void SwitchToEnglish(HWND hwnd, BOOL bEnglish)
 
 
 static void WinEventProc(HWINEVENTHOOK hWinEventHook,
-                         DWORD event,
-                         HWND hwnd,
-                         LONG idObject,
-                         LONG idChild,
-                         DWORD idEventThread,
-                         DWORD dwmsEventTime)
+    DWORD event,
+    HWND hwnd,
+    LONG idObject,
+    LONG idChild,
+    DWORD idEventThread,
+    DWORD dwmsEventTime)
 {
     UNREFERENCED_PARAMETER(hWinEventHook);
     UNREFERENCED_PARAMETER(event);
@@ -167,7 +167,7 @@ static void WinEventProc(HWINEVENTHOOK hWinEventHook,
     CloseHandle(hProcess);
 
     _wcslwr_s(wszFilename);
-    const auto *p = wcsrchr(wszFilename, L'\\') + 1;
+    const auto* p = wcsrchr(wszFilename, L'\\') + 1;
     std::wstring s(p);
 
     if (englishApps.find(s) != englishApps.end())
@@ -198,7 +198,7 @@ static BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     hInst = hInstance; // 将实例句柄存储在全局变量中
 
     HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-                              CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, HWND_MESSAGE, nullptr, hInstance, nullptr);
+        CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, HWND_MESSAGE, nullptr, hInstance, nullptr);
 
     if (!hWnd)
     {
@@ -235,7 +235,7 @@ static BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
     LoadEnglishApps();
     hEventHook = SetWinEventHook(EVENT_OBJECT_FOCUS, EVENT_OBJECT_FOCUS, nullptr, WinEventProc, 0, 0,
-                                 WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+        WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
 
     return TRUE;
 }
@@ -380,6 +380,36 @@ static SIZE_T GetMemoryLimit()
 }
 
 
+static BOOL HasParentProcess(DWORD dwProcessID, LPCWSTR lpParentExe, const std::unordered_map<DWORD, DWORD>& parentMap, const std::unordered_map<DWORD, std::wstring>& exeMap)
+{
+    DWORD dwParentID = dwProcessID;
+
+    while (dwParentID != 0)
+    {
+        auto parentIter = parentMap.find(dwParentID);
+
+        if (parentIter == parentMap.end())
+        {
+            break;
+        }
+
+        auto exeIter = exeMap.find(dwParentID);
+
+        if (exeIter != exeMap.end())
+        {
+            if (exeIter->second == lpParentExe)
+            {
+                return TRUE;
+            }
+        }
+
+        dwParentID = parentIter->second;
+    }
+
+    return FALSE;
+}
+
+
 static void KillSomeApp()
 {
     HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -454,31 +484,26 @@ static void KillSomeApp()
         }
         else if (wcsstr(pe32.szExeFile, L"oxc_language_server.exe") != nullptr)
         {
-            BOOL bFound = FALSE;
-            DWORD dwParentID = pe32.th32ParentProcessID;
+            BOOL bFound = HasParentProcess(pe32.th32ProcessID, L"zed.exe", parentMap, exeMap) ||
+                HasParentProcess(pe32.th32ProcessID, L"code.exe", parentMap, exeMap);
 
-            while (dwParentID != 0 && !bFound)
+            if (!bFound)
             {
-                auto parentIter = parentMap.find(dwParentID);
+                HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pe32.th32ProcessID);
 
-                if (parentIter == parentMap.end())
+                if (hProcess)
                 {
-                    break;
+                    TerminateProcess(hProcess, 0);
+                    CloseHandle(hProcess);
                 }
-
-                auto exeIter = exeMap.find(dwParentID);
-
-                if (exeIter != exeMap.end())
-                {
-                    if (exeIter->second == L"zed.exe" || exeIter->second == L"code.exe")
-                    {
-                        bFound = TRUE;
-                        break;
-                    }
-                }
-
-                dwParentID = parentIter->second;
             }
+        }
+        else if (wcsstr(pe32.szExeFile, L"node.exe") != nullptr)
+        {
+            BOOL bFound = HasParentProcess(pe32.th32ProcessID, L"windowsterminal.exe", parentMap, exeMap)
+                || HasParentProcess(pe32.th32ProcessID, L"bash.exe", parentMap, exeMap)
+                || HasParentProcess(pe32.th32ProcessID, L"zed.exe", parentMap, exeMap)
+                || HasParentProcess(pe32.th32ProcessID, L"code.exe", parentMap, exeMap);
 
             if (!bFound)
             {
