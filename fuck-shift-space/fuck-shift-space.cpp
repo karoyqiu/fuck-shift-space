@@ -501,6 +501,7 @@ static void KillSomeApp()
         else if (wcsstr(pe32.szExeFile, L"node.exe") != nullptr)
         {
             BOOL bFound = HasParentProcess(pe32.th32ProcessID, L"windowsterminal.exe", parentMap, exeMap)
+                || HasParentProcess(pe32.th32ProcessID, L"wechatdevtools.exe", parentMap, exeMap)
                 || HasParentProcess(pe32.th32ProcessID, L"bash.exe", parentMap, exeMap)
                 || HasParentProcess(pe32.th32ProcessID, L"zed.exe", parentMap, exeMap)
                 || HasParentProcess(pe32.th32ProcessID, L"code.exe", parentMap, exeMap);
