@@ -382,10 +382,13 @@ static SIZE_T GetMemoryLimit()
 
 static BOOL HasParentProcess(DWORD dwProcessID, LPCWSTR lpParentExe, const std::unordered_map<DWORD, DWORD>& parentMap, const std::unordered_map<DWORD, std::wstring>& exeMap)
 {
+    std::unordered_set<DWORD> visited;
     DWORD dwParentID = dwProcessID;
 
-    while (dwParentID != 0)
+    while (dwParentID != 0 && visited.find(dwParentID) == visited.end())
     {
+        visited.insert(dwParentID);
+
         auto parentIter = parentMap.find(dwParentID);
 
         if (parentIter == parentMap.end())
