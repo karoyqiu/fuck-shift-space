@@ -538,7 +538,23 @@ static void KillSomeApp()
 }
 
 
-static void RemoveDirectoryRecursively(LPCWSTR lpszDir)
+static ULONGLONG GetTempFileMaxAge()
+{
+    DWORD nHours = 24;
+    DWORD nValue = 0;
+    DWORD cbData = sizeof(nValue);
+
+    if (RegGetValueW(HKEY_CURRENT_USER, LR"(Software\karoyqiuuck-shift-space)", L"TempFileMaxAgeHours", RRF_RT_REG_DWORD, nullptr, &nValue, &cbData) == ERROR_SUCCESS)
+    {
+        nHours = nValue;
+    }
+
+    // FILETIME 单位为 100 纳秒
+    return nHours * UINT64_C(36000000000);
+}
+
+
+static void RemoveDirectoryRecursively(LPCWSTR lpszDir, ULONGLONG nDeadline)
 {
     WCHAR wszFind[MAX_PATH] = { 0 };
     wcscpy_s(wszFind, lpszDir);
@@ -561,9 +577,23 @@ static void RemoveDirectoryRecursively(LPCWSTR lpszDir)
             wcscat_s(wszName, L"\\");
             wcscat_s(wszName, data.cFileName);
 
+            if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && !(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+            {
+                RemoveDirectoryRecursively(wszName, nDeadline);
+                continue;
+            }
+
+            ULARGE_INTEGER ulAccess = { data.ftLastAccessTime.dwLowDateTime, data.ftLastAccessTime.dwHighDateTime };
+
+            if (ulAccess.QuadPart >= nDeadline)
+            {
+                continue;
+            }
+
+            // 链接只删除链接本身，不跟随到目标
             if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
-                RemoveDirectoryRecursively(wszName);
+                RemoveDirectoryW(wszName);
             }
             else
             {
@@ -594,7 +624,11 @@ static void ClearTempDir()
 
     if (ulFree.QuadPart < nMinimum)
     {
-        RemoveDirectoryRecursively(wszTempPath);
+        FILETIME ftNow = { 0 };
+        GetSystemTimeAsFileTime(&ftNow);
+        ULARGE_INTEGER ulNow = { ftNow.dwLowDateTime, ftNow.dwHighDateTime };
+
+        RemoveDirectoryRecursively(wszTempPath, ulNow.QuadPart - GetTempFileMaxAge());
         CreateDirectoryW(wszTempPath, nullptr);
     }
 }
